@@ -62,9 +62,13 @@ void echo_task(void *p) {
         if (time_end > time_init) {
             distance = (time_end - time_init) / 58;
             xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
-            printf("Sesor Conectado\n");
+            if (distance == 0) {
+                printf("Distancia: Infinito\n");
+            } else {
+                printf("Distancia: %d\n", distance);
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
@@ -87,9 +91,15 @@ void oled_task(void *p) {
             for (int i = 0; i <= steps; i++){
                 int current_distance = previous_distance + ((distance - previous_distance) * i / steps);
                 gfx_clear_buffer(&disp);
-                sprintf(str, "Distancia: %d cm", current_distance);
-                gfx_draw_string(&disp, 0, 0, 1, str);
-                gfx_draw_line(&disp, 15, 27, 20 + current_distance, 27);
+                if (distance == 0) {
+                    sprintf(str, "Distancia: Infinito");
+                    gfx_draw_string(&disp, 0, 0, 1, str);
+                    gfx_draw_line(&disp, 15, 27, 200, 27);
+                } else {
+                    sprintf(str, "Distancia: %d cm", current_distance);
+                    gfx_draw_string(&disp, 0, 0, 1, str);
+                    gfx_draw_line(&disp, 15, 27, 20 + current_distance, 27);
+                }
                 gfx_show(&disp);
                 vTaskDelay(pdMS_TO_TICKS(5));
             }
