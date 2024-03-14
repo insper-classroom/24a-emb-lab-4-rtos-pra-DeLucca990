@@ -15,12 +15,15 @@
 const uint BTN_1_OLED = 28;
 
 const uint LED_1_OLED = 20;
+const uint LED_2_OLED = 21;
+const uint LED_3_OLED = 22;
 
 int TRIG_PIN = 17;
 int ECHO_PIN = 16;
 
 volatile int time_init = 0;
 volatile int time_end = 0;
+volatile bool display_info = true;
 
 QueueHandle_t xQueueDistance;
 SemaphoreHandle_t xSemaphoreTrigger;
@@ -59,6 +62,7 @@ void echo_task(void *p) {
         if (time_end > time_init) {
             distance = (time_end - time_init) / 58;
             xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
+            printf("Sesor Conectado\n");
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -74,22 +78,67 @@ void oled_task(void *p) {
     int previous_distance = 0;
     char str[20];
     while (1) {
-        xSemaphoreGive(xSemaphoreTrigger);
-        xQueueReceive(xQueueDistance, &distance, portMAX_DELAY);
+        if (display_info) {
+            xSemaphoreGive(xSemaphoreTrigger);
+            xQueueReceive(xQueueDistance, &distance, portMAX_DELAY);
         
-        // Suavização linear para o que é exibido no display
-        int steps = abs(distance - previous_distance);
-        for (int i = 0; i <= steps; i++){
-            int current_distance = previous_distance + ((distance - previous_distance) * i / steps);
+            // Suavização linear para o que é exibido no display
+            int steps = abs(distance - previous_distance);
+            for (int i = 0; i <= steps; i++){
+                int current_distance = previous_distance + ((distance - previous_distance) * i / steps);
+                gfx_clear_buffer(&disp);
+                sprintf(str, "Distancia: %d cm", current_distance);
+                gfx_draw_string(&disp, 0, 0, 1, str);
+                gfx_draw_line(&disp, 15, 27, 20 + current_distance, 27);
+                gfx_show(&disp);
+                vTaskDelay(pdMS_TO_TICKS(5));
+            }
+            previous_distance = distance;
+            vTaskDelay(pdMS_TO_TICKS(100));
+        } else {
             gfx_clear_buffer(&disp);
-            sprintf(str, "Distancia: %d cm", current_distance);
-            gfx_draw_string(&disp, 0, 0, 1, str);
-            gfx_draw_line(&disp, 15, 27, 10 + current_distance, 27);
             gfx_show(&disp);
-            vTaskDelay(pdMS_TO_TICKS(5));
         }
-        previous_distance = distance;
         vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+void led_btn_1_init(void) {
+    gpio_init(BTN_1_OLED);
+    gpio_set_dir(BTN_1_OLED, GPIO_IN);
+    gpio_pull_up(BTN_1_OLED);
+    gpio_init(LED_1_OLED);
+    gpio_set_dir(LED_1_OLED, GPIO_OUT);
+
+    gpio_init(LED_2_OLED);
+    gpio_set_dir(LED_2_OLED, GPIO_OUT);
+
+    gpio_init(LED_3_OLED);
+    gpio_set_dir(LED_3_OLED, GPIO_OUT);
+
+    gpio_put(LED_1_OLED, 0);
+    gpio_put(LED_2_OLED, 1);
+    gpio_put(LED_3_OLED, 1);
+}
+
+void display_control_task(void *p) {
+    led_btn_1_init();
+
+    while (1) {
+        if (gpio_get(BTN_1_OLED) == 0) {
+            display_info = !display_info;
+
+            if (display_info) {
+                gpio_put(LED_1_OLED, 0);
+                gpio_put(LED_2_OLED, 1);
+                gpio_put(LED_3_OLED, 1);
+            } else {
+                gpio_put(LED_1_OLED, 1);
+                gpio_put(LED_2_OLED, 1);
+                gpio_put(LED_3_OLED, 1);
+            }
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
     }
 }
 
@@ -102,6 +151,7 @@ int main() {
     xTaskCreate(trigger_task, "Trigger", 4095, NULL, 1, NULL);
     xTaskCreate(echo_task, "Echo", 4095, NULL, 1, NULL);
     xTaskCreate(oled_task, "OLED", 4095, NULL, 1, NULL);
+    xTaskCreate(display_control_task, "Display Control", 4095, NULL, 1, NULL);
 
     vTaskStartScheduler();
 
