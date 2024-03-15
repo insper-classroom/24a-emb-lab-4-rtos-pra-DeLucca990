@@ -98,9 +98,8 @@ void oled_task(void *p) {
     int distance = 0;
     int previous_distance = 0;
     char str[20];
-    int display_info = 1;
     while (1) {
-        if (display_info) {
+        if (1){
             xSemaphoreGive(xSemaphoreTrigger);
             xQueueReceive(xQueueDistance, &distance, portMAX_DELAY);
         
