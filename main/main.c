@@ -23,6 +23,8 @@ int ECHO_PIN = 16;
 
 volatile bool display_info = true;
 
+volatile int64_t last_valid_read_time = 0;
+
 QueueHandle_t xQueueDistance;
 QueueHandle_t xQueueTime;
 SemaphoreHandle_t xSemaphoreTrigger;
@@ -38,10 +40,12 @@ void gpio_callback(uint gpio, uint32_t events) {
     Time time;
     if (events == 0x8) {
         time_init = to_us_since_boot(get_absolute_time());
+        last_valid_read_time = time_init;
     } else if (events == 0x4) {
         time.time_init = time_init;
         time.time_end = to_us_since_boot(get_absolute_time());
         xQueueSendFromISR(xQueueTime, &time, NULL);
+        last_valid_read_time = time.time_end;
     }
 }
 
@@ -68,6 +72,15 @@ void echo_task(void *p) {
     Time time;
     int distance = 0;
     while (1) {
+        int64_t current_time = to_us_since_boot(get_absolute_time());
+        if (current_time - last_valid_read_time > 1000000) {
+            printf("Erro: sensor desconectado\n");
+            distance = -2;
+            last_valid_read_time = current_time;
+        }
+        xQueueSend(xQueueDistance, &distance, portMAX_DELAY); 
+        vTaskDelay(pdMS_TO_TICKS(100));
+
         if (xQueueReceive(xQueueTime, &time, portMAX_DELAY) == pdTRUE) {
             if (time.time_end > time.time_init) {
                 distance = (time.time_init - time.time_end) / 58;
@@ -101,13 +114,21 @@ void oled_task(void *p) {
             for (int i = 0; i <= steps; i++){
                 int current_distance = previous_distance + ((distance - previous_distance) * i / steps);
                 gfx_clear_buffer(&disp);
+                if (distance == -2) {
+                    sprintf(str, "Reconecta ai mah");
+                    gfx_draw_string(&disp, 0, 10, 1, str);
+                    gfx_draw_line(&disp, 15, 27, 200, 27);
+                }
                 if (distance == -1) {
                     sprintf(str, "Distancia: Infinito");
                     gfx_draw_string(&disp, 0, 0, 1, str);
+                    gfx_draw_string(&disp, 0, 10, 1, "");
                     gfx_draw_line(&disp, 15, 27, 200, 27);
-                } else {
+                } 
+                else {
                     sprintf(str, "Distancia: %d cm", current_distance);
                     gfx_draw_string(&disp, 0, 0, 1, str);
+                    gfx_draw_string(&disp, 0, 10, 1, "");
                     gfx_draw_line(&disp, 15, 27, 20 + current_distance, 27);
                 }
                 gfx_show(&disp);
