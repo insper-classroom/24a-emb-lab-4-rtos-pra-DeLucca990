@@ -21,19 +21,27 @@ const uint LED_3_OLED = 22;
 int TRIG_PIN = 17;
 int ECHO_PIN = 16;
 
-volatile int time_init = 0;
-volatile int time_end = 0;
 volatile bool display_info = true;
 
 QueueHandle_t xQueueDistance;
+QueueHandle_t xQueueTime;
 SemaphoreHandle_t xSemaphoreTrigger;
+
+typedef struct {
+    int time_init;
+    int time_end;
+} Time;
 
 // pin_callback: Função callback do pino do echo.
 void gpio_callback(uint gpio, uint32_t events) {
-    if (events == 0x4) {
-        time_end = to_us_since_boot(get_absolute_time());
-    } else if (events == 0x8) {
+    static int time_init = 0;
+    Time time;
+    if (events == 0x8) {
         time_init = to_us_since_boot(get_absolute_time());
+    } else if (events == 0x4) {
+        time.time_init = time_init;
+        time.time_end = to_us_since_boot(get_absolute_time());
+        xQueueSendFromISR(xQueueTime, &time, NULL);
     }
 }
 
@@ -57,15 +65,17 @@ void echo_task(void *p) {
     gpio_set_dir(ECHO_PIN, GPIO_IN);
     gpio_set_irq_enabled_with_callback(ECHO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 
+    Time time;
     int distance = 0;
     while (1) {
-        if (time_end > time_init) {
-            distance = (time_end - time_init) / 58;
-            xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
-            if (distance == 0) {
-                printf("Distancia: Infinito\n");
-            } else {
-                printf("Distancia: %d\n", distance);
+        if (xQueueReceive(xQueueTime, &time, portMAX_DELAY) == pdTRUE) {
+            if (time.time_end > time.time_init) {
+                distance = (time.time_init - time.time_end) / 58;
+                distance = abs(distance);
+                if (distance > 200) {
+                    distance = - 1;
+                }
+                xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -91,7 +101,7 @@ void oled_task(void *p) {
             for (int i = 0; i <= steps; i++){
                 int current_distance = previous_distance + ((distance - previous_distance) * i / steps);
                 gfx_clear_buffer(&disp);
-                if (distance == 0) {
+                if (distance == -1) {
                     sprintf(str, "Distancia: Infinito");
                     gfx_draw_string(&disp, 0, 0, 1, str);
                     gfx_draw_line(&disp, 15, 27, 200, 27);
@@ -156,6 +166,7 @@ int main() {
     stdio_init_all();
 
     xQueueDistance = xQueueCreate(1, sizeof(int));
+    xQueueTime = xQueueCreate(1, sizeof(Time));
     xSemaphoreTrigger = xSemaphoreCreateBinary();
 
     xTaskCreate(trigger_task, "Trigger", 4095, NULL, 1, NULL);
