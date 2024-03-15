@@ -23,7 +23,6 @@ int ECHO_PIN = 16;
 
 volatile bool display_info = true;
 
-volatile int64_t last_valid_read_time = 0;
 
 QueueHandle_t xQueueDistance;
 QueueHandle_t xQueueTime;
@@ -32,6 +31,7 @@ SemaphoreHandle_t xSemaphoreTrigger;
 typedef struct {
     int time_init;
     int time_end;
+    int64_t last_valid_read_time;
 } Time;
 
 // pin_callback: Função callback do pino do echo.
@@ -40,12 +40,12 @@ void gpio_callback(uint gpio, uint32_t events) {
     Time time;
     if (events == 0x8) {
         time_init = to_us_since_boot(get_absolute_time());
-        last_valid_read_time = time_init;
+        time.last_valid_read_time = time_init;
     } else if (events == 0x4) {
         time.time_init = time_init;
         time.time_end = to_us_since_boot(get_absolute_time());
+        time.last_valid_read_time = time.time_end;
         xQueueSendFromISR(xQueueTime, &time, NULL);
-        last_valid_read_time = time.time_end;
     }
 }
 
@@ -59,7 +59,7 @@ void trigger_task(void *p) {
         gpio_put(TRIG_PIN, 1);
         vTaskDelay(pdMS_TO_TICKS(10));
         gpio_put(TRIG_PIN, 0);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 }
 
@@ -70,18 +70,28 @@ void echo_task(void *p) {
     gpio_set_irq_enabled_with_callback(ECHO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 
     Time time;
+    time.last_valid_read_time = 0;
     int distance = 0;
     while (1) {
         int64_t current_time = to_us_since_boot(get_absolute_time());
-        if (current_time - last_valid_read_time > 1000000) {
-            printf("Erro: sensor desconectado\n");
-            distance = -2;
-            last_valid_read_time = current_time;
-        }
-        xQueueSend(xQueueDistance, &distance, portMAX_DELAY); 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // printf("Current time: %lld\n", current_time);
+        // printf("Last valid read time: %lld\n", time.last_valid_read_time);
+        // if (current_time - time.last_valid_read_time > 4000000) {
+        //     printf("Erro: sensor desconectado\n");
+        //     distance = -2;
+        //     time.last_valid_read_time = current_time;
+        // }
+        // xQueueSend(xQueueDistance, &distance, portMAX_DELAY); 
 
-        if (xQueueReceive(xQueueTime, &time, portMAX_DELAY) == pdTRUE) {
+        if (xQueueReceive(xQueueTime, &time, 0)) {
+            printf("Current time: %lld\n", current_time);
+            printf("Last valid read time: %lld\n", time.last_valid_read_time);
+            if (current_time - time.last_valid_read_time > 4000000) {
+                printf("Erro: sensor desconectado\n");
+                distance = -2;
+                // time.last_valid_read_time = current_time;
+                // xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
+        }
             if (time.time_end > time.time_init) {
                 distance = (time.time_init - time.time_end) / 58;
                 distance = abs(distance);
@@ -90,6 +100,11 @@ void echo_task(void *p) {
                 }
                 xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
             }
+        } else {
+            time.last_valid_read_time = current_time;
+            printf("Erro: sensor desconectado 2\n");
+            distance = -2;
+            xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -185,6 +200,9 @@ void display_control_task(void *p) {
 
 int main() {
     stdio_init_all();
+
+    Time time;
+    time.last_valid_read_time = 0;
 
     xQueueDistance = xQueueCreate(1, sizeof(int));
     xQueueTime = xQueueCreate(1, sizeof(Time));
