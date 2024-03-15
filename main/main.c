@@ -69,7 +69,7 @@ void echo_task(void *p) {
     gpio_set_irq_enabled_with_callback(ECHO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 
     Time time;
-    time.last_valid_read_time;
+    time.last_valid_read_time = 0;
     int distance;
     while (1) {
         int64_t current_time = to_us_since_boot(get_absolute_time());
@@ -183,7 +183,7 @@ int main() {
     stdio_init_all();
 
     Time time;
-    time.last_valid_read_time = 0;
+    time.last_valid_read_time;
 
     xQueueDistance = xQueueCreate(1, sizeof(int));
     xQueueTime = xQueueCreate(1, sizeof(Time));
