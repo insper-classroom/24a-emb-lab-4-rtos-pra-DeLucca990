@@ -75,7 +75,7 @@ void echo_task(void *p) {
                 distance = (time.time_init - time.time_end) / 58;
                 distance = abs(distance);
                 if (distance > 200) {
-                    distance = - 1;
+                    distance = 200;
                 }
                 xQueueSend(xQueueDistance, &distance, portMAX_DELAY);
             }
@@ -108,14 +108,9 @@ void oled_task(void *p) {
             for (int i = 0; i <= steps; i++){
                 int current_distance = previous_distance + ((distance - previous_distance) * i / steps);
                 gfx_clear_buffer(&disp);
-                if (distance == -2) {
+                if (distance == -2 || distance >= 200) {
                     sprintf(str, "Disancia: Inifinito");
                     gfx_draw_string(&disp, 0, 10, 1, str);
-                    gfx_draw_line(&disp, 15, 27, 200, 27);
-                }
-                if (distance == -1) {
-                    sprintf(str, "Distancia: Infinito");
-                    gfx_draw_string(&disp, 0, 0, 1, str);
                     gfx_draw_line(&disp, 15, 27, 200, 27);
                 } 
                 else {
