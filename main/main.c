@@ -182,9 +182,6 @@ void display_control_task(void *p) {
 int main() {
     stdio_init_all();
 
-    Time time;
-    time.last_valid_read_time;
-
     xQueueDistance = xQueueCreate(1, sizeof(int));
     xQueueTime = xQueueCreate(1, sizeof(Time));
     xSemaphoreTrigger = xSemaphoreCreateBinary();
