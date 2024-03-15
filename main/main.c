@@ -21,9 +21,6 @@ const uint LED_3_OLED = 22;
 int TRIG_PIN = 17;
 int ECHO_PIN = 16;
 
-volatile bool display_info = true;
-
-
 QueueHandle_t xQueueDistance;
 QueueHandle_t xQueueTime;
 SemaphoreHandle_t xSemaphoreTrigger;
@@ -101,6 +98,7 @@ void oled_task(void *p) {
     int distance = 0;
     int previous_distance = 0;
     char str[20];
+    int display_info = 1;
     while (1) {
         if (display_info) {
             xSemaphoreGive(xSemaphoreTrigger);
@@ -160,7 +158,7 @@ void led_btn_1_init(void) {
 
 void display_control_task(void *p) {
     led_btn_1_init();
-
+    int display_info = 1;
     while (1) {
         if (gpio_get(BTN_1_OLED) == 0) {
             display_info = !display_info;
